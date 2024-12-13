@@ -12,7 +12,7 @@ dataset_path = "Faces"
 os.makedirs(dataset_path, exist_ok=True)
 
 # Threshold for confidence to detect "Unknown"
-CONFIDENCE_THRESHOLD = 80  # If confidence is below this, consider as "Unknown"
+CONFIDENCE_THRESHOLD = 85  # Adjusted threshold for confidence
 
 def capture_faces(user_name, num_images=20):
     """Capture faces for training."""
@@ -29,7 +29,8 @@ def capture_faces(user_name, num_images=20):
             break
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(50, 50))
+
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=3, minSize=(50, 50))
 
         for (x, y, w, h) in faces:
             face = gray[y:y + h, x:x + w]
@@ -94,7 +95,7 @@ def recognize_faces(label_map):
             break
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(50, 50))
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
 
         for (x, y, w, h) in faces:
             face = gray[y:y + h, x:x + w]
@@ -104,23 +105,27 @@ def recognize_faces(label_map):
                 # Face Recognition
                 label, confidence = recognizer.predict(resized_face)
                 
-                # If confidence is low, consider it as "Unknown"
-                if confidence < CONFIDENCE_THRESHOLD:
-                    user_name = "Unknown"
-                else:
+                # Check confidence threshold
+                if confidence < CONFIDENCE_THRESHOLD:  # Lower confidence threshold for recognition
                     user_name = [name for name, lbl in label_map.items() if lbl == label][0]
-                
+                else:
+                    user_name = "Unknown"
+
+                print(f"Recognized: {user_name}, Confidence: {confidence}")
+
+                # Mood Detection
+                try:
+                    face_color = frame[y:y + h, x:x + w]  # Colored face for emotion analysis
+                    analysis = DeepFace.analyze(face_color, actions=["emotion"], enforce_detection=False)
+                    mood = analysis[0]["dominant_emotion"]
+                except Exception as e:
+                    print(f"Mood detection error: {e}")
+                    mood = "Unknown"
+
                 recognition_text = f"User: {user_name} ({round(confidence, 2)})"
-
-                # Mood Detection using DeepFace
-                face_color = frame[y:y + h, x:x + w]  # Colored face for emotion analysis
-                analysis = DeepFace.analyze(face_color, actions=["emotion"], enforce_detection=False)
-
-                # Correctly access dominant emotion
-                mood = analysis[0]["dominant_emotion"]
                 mood_text = f"Mood: {mood}"
 
-                # Draw rectangle and display info
+                # Draw rectangle and display text
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
                 cv2.putText(frame, recognition_text, (x, y - 30), cv2.FONT_HERSHEY_SIMPLEX, 
                             0.6, (255, 255, 255), 2)
@@ -134,12 +139,31 @@ def recognize_faces(label_map):
 
         cv2.imshow("Face Recognition and Mood Detection", frame)
 
-        # Exit on pressing 'q'
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        # Exit on pressing 'l'
+        if cv2.waitKey(1) & 0xFF == ord('l'):
             break
 
     cap.release()
     cv2.destroyAllWindows()
+
+def delete_user_data(user_name):
+    """Delete all images associated with a user."""
+    print(f"Deleting data for user: {user_name}")
+    
+    # Iterate through all files in the dataset folder
+    for file_name in os.listdir(dataset_path):
+        # Check if the file name starts with the user's name
+        if file_name.startswith(user_name):
+            file_path = os.path.join(dataset_path, file_name)
+            
+            # Delete the file
+            try:
+                os.remove(file_path)
+                print(f"Deleted: {file_name}")
+            except Exception as e:
+                print(f"Error deleting {file_name}: {e}")
+    
+    print(f"Data deletion completed for user: {user_name}")
 
 # Menu-driven execution
 if __name__ == "__main__":
@@ -149,7 +173,8 @@ if __name__ == "__main__":
         print("1. Capture Faces")
         print("2. Train Model")
         print("3. Recognize Faces and Detect Mood")
-        print("4. Exit")
+        print("4. Delete User Data")
+        print("5. Exit")
 
         choice = input("Enter your choice: ")
         if choice == "1":
@@ -163,6 +188,9 @@ if __name__ == "__main__":
             else:
                 recognize_faces(label_map)
         elif choice == "4":
+            user_name_to_delete = input("Enter the name of the user whose data you want to delete: ")
+            delete_user_data(user_name_to_delete)
+        elif choice == "5":
             print("Exiting...")
             break
         else:
